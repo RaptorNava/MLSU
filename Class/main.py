@@ -135,24 +135,35 @@ def make_target_plot(df: pd.DataFrame) -> str:
 
 
 def make_correlation_plots(df: pd.DataFrame, numeric: list[str], target: pd.Series) -> tuple[str, list[str]]:
-    if len(numeric) < 2:
-        return "Недостаточно числовых признаков для корреляционной матрицы.", []
+    # Для корреляций добавляем числовые коды дискретных признаков.
+    # Это не меняет их классификацию для основного EDA: здесь они нужны
+    # только для компактной оценки линейных связей и связи с целью.
+    correlation_columns = list(dict.fromkeys(numeric + ["Pclass", "SibSp", "Parch"]))
+    correlation_data = df[correlation_columns].copy()
+    if "Sex" in df.columns:
+        correlation_data["Sex"] = df["Sex"].map({"male": 0, "female": 1})
+    correlation_data[TARGET] = target.values
+    correlation_columns = list(correlation_data.columns)
 
-    corr = df[numeric].corr()
-    plt.figure(figsize=(8, 6))
+    if len(correlation_columns) < 2:
+        return "Недостаточно признаков для корреляционной матрицы.", []
+
+    corr = correlation_data.corr()
+    plt.figure(figsize=(11, 9))
     sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", center=0, square=True)
-    plt.title("Корреляционная матрица числовых признаков")
-    plt.xlabel("Числовой признак")
-    plt.ylabel("Числовой признак")
+    plt.title("Корреляционная матрица числовых и закодированных признаков")
+    plt.xlabel("Признак")
+    plt.ylabel("Признак")
     savefig("05_correlation_matrix.png")
 
     pairs = []
-    for left_index, left in enumerate(numeric):
-        for right in numeric[left_index + 1 :]:
+    pair_features = [column for column in correlation_columns if column != TARGET]
+    for left_index, left in enumerate(pair_features):
+        for right in pair_features[left_index + 1 :]:
             pairs.append((abs(corr.loc[left, right]), left, right))
     pairs = sorted(pairs, reverse=True)[:3]
     pair_columns = list(dict.fromkeys([column for _, left, right in pairs for column in (left, right)]))
-    pair_data = df[pair_columns].copy()
+    pair_data = correlation_data[pair_columns].copy()
     pair_data[TARGET] = target.astype(str).values
     grid = sns.pairplot(pair_data, vars=pair_columns, hue=TARGET, corner=True, diag_kind="hist")
     grid.fig.suptitle("Диаграммы рассеяния наиболее коррелирующих пар", y=1.02)
